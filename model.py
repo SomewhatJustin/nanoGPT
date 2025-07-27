@@ -18,6 +18,12 @@ from torch.nn import functional as F
 class LayerNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
 
+    """
+    LayerNorm is a TF function that allows us to normalize across a particular dimension(s)
+    For example, if I were to LayerNorm(2) on a 6x2 tensor, we would normalize and reset for each row of length 2.
+    So data in each column is kept separated.
+    """
+
     def __init__(self, ndim, bias):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(ndim))
@@ -27,6 +33,10 @@ class LayerNorm(nn.Module):
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
 class CausalSelfAttention(nn.Module):
+    """
+    Self attention allows the model to look at a particular token and calculate the context
+    of the token by looking at every other token nearby and weighing its relevance
+    """
 
     def __init__(self, config):
         super().__init__()
@@ -75,14 +85,17 @@ class CausalSelfAttention(nn.Module):
         y = self.resid_dropout(self.c_proj(y))
         return y
 
-class MLP(nn.Module):
+class MLP(nn.Module): # Multilayer perceptron. A type of neural net.
 
     def __init__(self, config):
         super().__init__()
         self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        self.gelu    = nn.GELU()
+        """
+        Linear is just a linear transformation w/ bias
+        """
+        self.gelu    = nn.GELU() # a way to smooth
         self.c_proj  = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
-        self.dropout = nn.Dropout(config.dropout)
+        self.dropout = nn.Dropout(config.dropout) # reduce overfitting potential by randomly setting weights to zero
 
     def forward(self, x):
         x = self.c_fc(x)
@@ -123,7 +136,7 @@ class GPT(nn.Module):
         assert config.block_size is not None
         self.config = config
 
-        self.transformer = nn.ModuleDict(dict(
+        self.transformer = nn.ModuleDict(dict( # allows us to organize in named layers (a dictionary)
             wte = nn.Embedding(config.vocab_size, config.n_embd),
             wpe = nn.Embedding(config.block_size, config.n_embd),
             drop = nn.Dropout(config.dropout),
@@ -167,7 +180,7 @@ class GPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx, targets=None):
+    def forward(self, idx, targets=None): # forward pass to produce output
         device = idx.device
         b, t = idx.size()
         assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
@@ -289,6 +302,7 @@ class GPT(nn.Module):
     def estimate_mfu(self, fwdbwd_per_iter, dt):
         """ estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS """
         # first estimate the number of flops we do per iteration.
+        # this is a measure of efficiency
         # see PaLM paper Appendix B as ref: https://arxiv.org/abs/2204.02311
         N = self.get_num_params()
         cfg = self.config
